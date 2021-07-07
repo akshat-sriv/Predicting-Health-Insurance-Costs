@@ -1,0 +1,309 @@
+---
+title: "health_insurance"
+author: "Akshat Srivastav"
+date: "7/1/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+suppressWarnings(library(ggplot2))
+suppressWarnings(library(tidyverse))
+suppressWarnings(library(dplyr))
+suppressWarnings(library(ggthemes))
+```
+
+## Reading in data
+
+```{r}
+health_insurance <- read_csv("insurance.csv")
+head(health_insurance)
+
+n_missing <- nrow(health_insurance[!complete.cases(health_insurance), ])
+
+# Reassigning levels to region
+health_insurance$region <- factor(health_insurance$region)
+levels(health_insurance$region) <- c("Northeast", "Northwest", "Southeast", "Southwest")
+
+# Reassigning levels to sex
+health_insurance$sex <- factor(health_insurance$sex)
+levels(health_insurance$sex) <- c("Female", "Male")
+```
+We use the `read_csv()` function from the `read_r` package that provides us a specification of the columns in the data table that we read. It appears that there are `r n_missing` rows of data that contain missing values. 
+
+```{r}
+colnames(health_insurance)
+```
+
+## Exploring distribution age
+
+First we want to explore the distribution of age in the primary beneficiaries of our dataset.
+
+```{r}
+age_dist_plot <- ggplot(data = health_insurance, aes(x = age, y = ..density..)) + 
+  geom_histogram(binwidth = 2, fill = 'coral1', color = 'black') + theme_bw() + 
+  xlab('Age (years)') + ylab('Density') + ggtitle('Distribution of Age') + theme(plot.title = element_text(hjust = 0.5))
+
+age_dist_plot
+```
+It appears from the plot above that there is quite a high density of beneficiaries that are 18 to 19 years old. The proportion of other age groups is roughly uniform at 0.02. 
+
+## Exploring distribution of charges
+
+```{r}
+median_charges <- median(health_insurance$charges)
+
+annotation <- data.frame(x = 20000, y = 2.1e-05, label = 'Median')
+
+charge_dist_plot <- ggplot(data = health_insurance, aes(x=charges, y=..density..)) + 
+  geom_histogram(binwidth = 2500, fill = 'dodgerblue3', color = 'black') + theme_bw() + xlab('Charges ($)') + ylab('Density') + ggtitle('Distribution of Charges') + theme(plot.title = element_text(hjust=0.5)) + scale_x_continuous(breaks = seq(0, 60000, 10000)) + geom_vline(xintercept = median_charges, color = 'red', linetype = 'dashed') + 
+  geom_text(data = annotation, aes(x = x, y = y, label = label), 
+            color = 'red', size = 4, fontface='bold') + 
+  annotate('segment', x = 20000, y = 2e-05, xend = median_charges, yend = 0, 
+           color = 'red', alpha = 0.6, arrow = arrow(), size = 1)
+charge_dist_plot
+```
+
+Above is the distribution of charges. It appears that the distribution if skewed to the right as the tail on the right is quite long. Moreover, the median insurance cost incurred appears to be about $9000, `r median_charges` to be precise.
+
+## Exploring the correlation between age and insurance cost
+
+```{r}
+age_cost_plot <- ggplot(data = health_insurance, aes(x = age, y = charges)) + 
+  geom_jitter(aes(color = sex)) + theme_classic() + 
+  labs(x = 'Age (years)', y = 'Charges ($)', title = 'Scatterplot: Charges vs Age') + 
+  theme(plot.title = element_text(hjust=0.5)) + scale_color_discrete(name = 'Sex')
+
+age_cost_plot
+```
+The plot above is a scatter plot showing the insurance charges against the age of the primary beneficiary. Although we discern a general trend whereby the charges tend to increase with the age of the primary beneficiary, notice we can see roughly three strata or layers within the line. Perhaps, these strata are separated based on some categorical variable. We play around with the color argument in `aes()` to find out.
+
+```{r}
+age_cost_plot1 <- ggplot(data = health_insurance, aes(x = age, y = charges)) + 
+  geom_jitter(aes(color = smoker)) + theme_classic() + 
+  labs(x = 'Age (years)', y = 'Charges ($)', title = 'Scatterplot: Charges vs Age') + 
+  theme(plot.title = element_text(hjust=0.5)) + scale_color_discrete(name = 'Is smoker?')
+
+age_cost_plot1
+```
+Ha! It looks like we have found the variable that causes these separate layers. Notice that there are roughly three parallel lines. The lowest parallel line, i.e. the line with the lowest charges across all ages consists of non smokers only. The middle line, i.e. the line with higher insurance charges consists of smokers and non-smokers; although it is difficult to commend on whether one group outnumbers the other. The highest line, i.e. the line where the insurance charges are the highest across all age groups, consists primarily of smokers.
+
+Hence, both age and a person's smoking habits seem to appear their insurance charges.
+
+## Exploring the correlation between BMI and insurance cost
+
+```{r}
+bmi_cost_plot <- ggplot(data = health_insurance, aes(x = bmi, y = charges)) + 
+  geom_jitter(aes(color = sex)) + theme_classic() + 
+  labs(x = 'BMI', y = 'Charges ($)', title = 'Scatterplot: Charges vs BMI') + 
+  theme(plot.title = element_text(hjust=0.5)) + scale_color_discrete(name = 'Sex')
+
+bmi_cost_plot
+```
+There does not appear to be a significant correlation between the Charges and BMI as there is no discernible pattern in the scatter plot above. Perhaps, a better idea may be to classify these BMI values into the categories:
+
+* Underweight: BMI is less than 18.5
+* Normal Weight: BMI is 18.5 to 24.9
+* Overweight: BMI is 25 to 29.9
+* Obese: BMI is 30 or more.
+
+Once we have binned the BMI into these classes, we can try and study the distribution of health insurance charges for each BMI class.
+
+```{r}
+# Classifying our BMI into its classes
+bmi <- health_insurance$bmi
+health_insurance$bmi_class <- ifelse(bmi < 18.5, "Underweight", 
+                           ifelse(bmi >= 18.5 & bmi < 25, "Normal", 
+                                  ifelse(bmi >= 25 & bmi < 30, "Overweight", "Obese")))
+
+health_insurance$bmi_class <- factor(health_insurance$bmi_class, 
+                                     levels = c("Underweight", "Normal", "Overweight", "Obese"), ordered = TRUE)
+
+bmi_boxplot <- ggplot(data = health_insurance, aes(x = bmi_class, y = charges)) + 
+  geom_boxplot(aes(fill = sex)) + theme_classic() + 
+  labs(x = "BMI Class", y = "Charges ($)",
+       title = "Distribution of Charges by BMI Class") + 
+  scale_fill_discrete(name = "Sex") +
+  theme(plot.title = element_text(hjust=0.5))
+  
+
+bmi_boxplot
+```
+## Does the number of children of the primary beneficiary affect insurance charges?
+
+```{r}
+health_insurance$children <- factor(health_insurance$children)
+children_charges_plot <- ggplot(data = health_insurance, aes(x = children, y = charges)) + 
+  stat_summary(fun.y = mean, geom = "point") + 
+  stat_summary(fun.data = mean_sdl, 
+               fun.args = list(mult = 1), 
+               geom = "errorbar", 
+               width = 0.1) + 
+  labs(x = "Number of Children", y = "Insurance Charges ($)",
+       title = "Insurance Charges vs Number of Children") + 
+  theme_classic() + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+children_charges_plot
+```
+It appears that the mean insurance charges initially increase with the number of children. After the number of children is greater than two the insurance charges begin to decrease.
+
+```{r}
+children_charges_boxplot <- ggplot(data = health_insurance, aes(x = children, y = charges)) + geom_boxplot() + theme_classic() + labs(x = "Number of Children", y = "Insurance Charges ($)", title = "Insurance Charges distribution by Number of Children") + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+children_charges_boxplot
+```
+## Does gender affect the insurance charges?
+
+```{r}
+gender_charges_plot <- ggplot(data = health_insurance, aes(x = sex, y = charges)) + 
+  geom_boxplot() + theme_classic() + labs(x = "Sex", y = "Insurance Charges ($)", 
+                                          title = "Insurance Charges based on Sex") + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+gender_charges_plot
+```
+## Does region affect insurance charges?
+
+```{r}
+
+region_boxplot <- ggplot(data = health_insurance, aes(x = region, y = charges)) +
+                           geom_boxplot() + 
+                           theme_economist() +
+                           labs(x = "Region", y = "Insurance Charges ($)",
+                                title = "Health Insurance Charges by Region") +
+                           theme(plot.title = element_text(hjust = 0.5))
+
+region_boxplot
+```
+The distribution of insurance charges does not seem much different across the different regions, except for the 75th percentile. 
+
+## Faceting Health Insurance Charges by Region
+
+```{r}
+age_cost_facet <- age_cost_plot1 + facet_wrap(~ region, nrow = 2)
+age_cost_facet
+```
+It appears that the correlation between insurance charges and age does not really change with the region as all lines seem to have the same slope.
+
+## Checking if insurance charges vary by gender
+
+```{r}
+gender_plot <- ggplot(data = health_insurance, aes(x = sex, y = charges, fill = sex)) + 
+  geom_boxplot() + theme_economist() + 
+  labs(x = "Sex", y = "Insurance Charges ($)",
+       title = "Health Insurance Charges by Region") + 
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+
+gender_plot
+```
+The only difference I notice in the distributions is that the 75th percentile, or the upper quartile, for Males is higher than that of females. Apart from that, the lower quartiles and medians for both genders appear to be quite similar. 
+
+## Faceting by dependence of costs on age by gender
+
+```{r}
+age_cost_plot1 + facet_wrap(~sex, ncol = 2)
+```
+
+## Fitting the linear model
+
+```{r}
+charges_model <- lm(charges ~ age + sex + bmi + children + smoker + region,
+                    data = health_insurance)
+summary(charges_model)
+```
+We have fit a linear model, and it currently seems like the statistically significant features or variables are age, sex, bmi, smoking status, Southeast and Southwest regions. However, before we make any inferences we must first check that our model assumptions are satisfied.
+
+```{r}
+plot(charges_model)
+```
+
+* Linearity: To check whether the linearity assumption is satisfied or not we look at the Residuals vs Fitted plot. Ideally we want to see no trend in the residuals, because residuals are unbiased estimators of random error that follow a normal distribution centered at 0 and a constant variance. Here, it does not appear like the linearity assumption is satisfied because we see a slight upward trend when residuals should really be centered at 0.
+
+* Our assumption of normality is not satisfied at all. This is evident in the qqplot as beyond 1 quantile from 0, in either direction, there is heavy deviation from the qqline. 
+
+* Our assumption of non-constant variance is not satisfied either as we can see a clear upward trend in the standardized residuals.
+
+## Running More Detailed Model Diagnostics 
+
+We know that there is a problem with non-linearity, normality and constant variance. Let us try and tackle the issue of non-linearity first. We use marginal model plots to see where exactly our model fails in linearity. Marginal model plots contain a smooth fit function for the variables and the actual model. If the smooth fit function and the model are very different, this indicates a problem with the specific variable.
+
+```{r}
+suppressWarnings(library(alr4))
+mmp(charges_model, health_insurance$age)
+```
+There appears to be no problem with age. 
+
+```{r}
+mmp(charges_model, health_insurance$bmi)
+```
+
+From the marginal model plot for BMI, our model seems to misfit the data as the smooth fit function shows a non-linear, perhaps quadratic, trend while our model shows an upward increasing linear trend. Perhaps we can try adding a quadratic term for BMI.
+
+```{r}
+invResPlot(charges_model)
+```
+
+The inverse response plot suggests a transformation of 0.65 for the response variable charges. Let us try that. 
+
+```{r}
+health_insurance$charges.t <- health_insurance$charges ^ 0.653212
+charges_model1 <- lm(charges.t ~ age + sex + bmi + children + smoker + region,
+                    data = health_insurance)
+summary(charges_model1)
+```
+
+```{r}
+plot(charges_model1)
+```
+There is definitely an improvement. Perhaps we could try a log transform. 
+
+```{r}
+charges_model2 <- lm(log(charges) ~ age + sex + bmi + children + smoker +
+                       region, data = health_insurance)
+summary(charges_model2)
+```
+
+Now we check for model assumptions.
+
+```{r}
+plot(charges_model2)
+```
+There's an improvement in the residuals plot but the other plots are still pretty poor.
+
+## Let's find the transformations for both the predictor and response variables
+
+```{r}
+## Transform Y
+summary(powerTransform(charges_model))
+```
+No log transformation needed. However, we still need some transformation.
+
+It seems like our transformations have only slightly improved the $R^2$ value from 0.75 to 0.77 which is not a sufficient accuracy score. Perhaps, model selection, i.e. selecting the right variables can help us improve the score. If not, we will look at alternative models.
+
+```{r}
+# install.packages("leaps")
+require(leaps)
+```
+```{r}
+health_insurance$children <- as.numeric(health_insurance$children) - 1
+bestss <- regsubsets(charges.t ~ age + sex + bmi + children + smoker + region,
+                     data = health_insurance)
+summary(bestss)
+bic <- summary(bestss)$bic
+p <- length(bic)
+plot(1:p, bic)
+lines(1:p, bic)
+```
+
+It appears that choosing four variables produces the lowest BIC. Hence for four variables our best model would include age, BMI, children, and smoker. We refit our data.
+
+```{r}
+charges_model_bic <- lm(charges.t ~ age + bmi + children + smoker, data = health_insurance)
+summary(charges_model_bic)
+```
+Note that this model predicts $charges ^ {0.65}$ as a linear function of age, BMI, children and smoking habits. We get an $R^2$ value of 0.7721 which is not sufficient so we will look at using other models for this data. 
